@@ -20,10 +20,16 @@ The analyzer uses SciPy for Bayesian credible ranges and evidence calculations. 
 venv/bin/python analyze_review_responses.py /path/to/reviews.csv
 ```
 
-Redirect the JSON report to a file if desired:
+The default output is JSON. Generate a shareable Markdown report with:
 
 ```bash
-venv/bin/python analyze_review_responses.py /path/to/reviews.csv > review-analysis.json
+venv/bin/python analyze_review_responses.py /path/to/reviews.csv --format markdown
+```
+
+Redirect either report format to a file if desired:
+
+```bash
+venv/bin/python analyze_review_responses.py /path/to/reviews.csv --format markdown > review-analysis.md
 ```
 
 ## Input CSV

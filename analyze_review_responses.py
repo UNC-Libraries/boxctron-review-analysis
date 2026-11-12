@@ -1,7 +1,7 @@
 """Analyze human review decisions exported in a CSV file.
 
 Usage:
-    python analyze_review_responses.py path/to/reviews.csv
+    python analyze_review_responses.py path/to/reviews.csv [--format json|markdown]
 """
 
 import argparse
@@ -72,6 +72,109 @@ def tag_bayesian_metrics(
             100 * beta_distribution.sf(global_image_review_rate, posterior_alpha, posterior_beta), 2
         ),
     }
+
+
+def markdown_cell(value: object) -> str:
+    """Escape a value for use in a Markdown table cell."""
+    return str(value).replace("|", "\\|").replace("\n", " ").replace("\r", " ")
+
+
+def format_percentage(value: float) -> str:
+    """Format a percentage for the Markdown report."""
+    return f"{value:.1f}%"
+
+
+def format_score(value: float | None) -> str:
+    """Format a risk-score statistic for the Markdown report."""
+    return "N/A" if value is None else f"{value:.2f}"
+
+
+def format_markdown_report(report: dict[str, Any]) -> str:
+    """Render an analysis report as a shareable Markdown document."""
+    analysis = report["content_tag_analysis"]
+    lines = [
+        "# Human Review Analysis",
+        "",
+        "## Summary",
+        "",
+        f"- Images analyzed: {len(report['images'])}",
+        f"- Reviewers: {len(report['reviewers'])}",
+        f"- Content tags: {len(report['content_tags'])}",
+        "- Global image-level review rate: "
+        f"{format_percentage(analysis['global_image_review_rate_percentage'])}",
+        f"- Tag prior strength: {analysis['prior_strength_images']} image-equivalents",
+        "",
+        "## Reviewer Risk Scores",
+        "",
+        "| Reviewer | Decision | Average | Median | Min | Max |",
+        "| --- | --- | ---: | ---: | ---: | ---: |",
+    ]
+
+    for reviewer, categories in report["reviewers"].items():
+        for decision, scores in categories.items():
+            lines.append(
+                "| "
+                f"{markdown_cell(reviewer)} | {markdown_cell(decision)} | "
+                f"{format_score(scores['average'])} | {format_score(scores['median'])} | "
+                f"{format_score(scores['min'])} | {format_score(scores['max'])} |"
+            )
+    for decision, scores in report["all_reviewers"].items():
+        lines.append(
+            "| All reviewers | "
+            f"{markdown_cell(decision)} | {format_score(scores['average'])} | "
+            f"{format_score(scores['median'])} | {format_score(scores['min'])} | "
+            f"{format_score(scores['max'])} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Content Tag Review Signals",
+            "",
+            "| Tag | Images | Majority needs review | Reviewer marked for review | Smoothed review rate | 95% credible range | Probability above baseline |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for tag, metrics in report["content_tags"].items():
+        lines.append(
+            "| "
+            f"{markdown_cell(tag)} | {metrics['images_with_tag_total_count']} | "
+            f"{metrics['images_with_tag_needing_review_count']} / "
+            f"{metrics['images_with_tag_total_count']} "
+            f"({format_percentage(metrics['images_majority_agree_needs_review_percentage'])}) | "
+            f"{metrics['total_times_marked_for_review']} / {metrics['total_responses']} "
+            f"({format_percentage(metrics['reviewer_marked_for_review_percentage'])}) | "
+            f"{format_percentage(metrics['baseline_smoothed_review_rate_percentage'])} | "
+            f"{format_percentage(metrics['estimated_review_rate_credible_range_min'])} to "
+            f"{format_percentage(metrics['estimated_review_rate_credible_range_max'])} | "
+            f"{format_percentage(metrics['probability_review_rate_exceeds_baseline_percentage'])} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "### Interpreting Tag Signals",
+            "",
+            "- **Majority needs review** counts images where more than half of reviewers marked the image for review.",
+            "- **Smoothed review rate** combines the tag's image data with the global review rate, weighted as five image-equivalents, so rare tags are not treated as certain.",
+            "- **95% credible range** is the range that has a 95% probability of containing the tag's underlying long-term review rate, given the model and available data.",
+            "- **Probability above baseline** estimates how likely the tag's underlying review rate is higher than the global image-level rate.",
+            "",
+            "## Per-Image Review Decisions",
+            "",
+            "| Image ID | Title | Risk score | Positive decisions | Reviewers | Marked for review |",
+            "| --- | --- | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for image in report["images"]:
+        lines.append(
+            "| "
+            f"{markdown_cell(image['id'])} | {markdown_cell(image['title'])} | "
+            f"{image['risk_score']:.2f} | {image['needs_review_count']} | "
+            f"{image['reviewer_count']} | {format_percentage(image['needs_review_percentage'])} |"
+        )
+
+    return "\n".join(lines) + "\n"
 
 
 def analyze_rows(rows: list[dict[str, str]], fieldnames: Sequence[str] | None) -> dict[str, Any]:
@@ -192,6 +295,13 @@ def analyze_rows(rows: list[dict[str, str]], fieldnames: Sequence[str] | None) -
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Analyze human review decisions from a CSV export.")
     parser.add_argument("csv_file", type=Path, help="CSV file containing image metadata and review columns.")
+    parser.add_argument(
+        "--format",
+        dest="output_format",
+        choices=("json", "markdown"),
+        default="json",
+        help="Report format (default: json).",
+    )
     return parser.parse_args()
 
 
@@ -205,7 +315,10 @@ def main() -> int:
         print(f"Error: {error}", file=sys.stderr)
         return 1
 
-    print(json.dumps(report, indent=2))
+    if args.output_format == "markdown":
+        print(format_markdown_report(report), end="")
+    else:
+        print(json.dumps(report, indent=2))
     return 0
 
 

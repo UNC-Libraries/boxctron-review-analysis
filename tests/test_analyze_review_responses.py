@@ -1,6 +1,11 @@
 import pytest
 
-from analyze_review_responses import analyze_rows, needs_review, tag_bayesian_metrics
+from analyze_review_responses import (
+    analyze_rows,
+    format_markdown_report,
+    needs_review,
+    tag_bayesian_metrics,
+)
 
 
 def test_needs_review_accepts_only_literal_y_values():
@@ -98,6 +103,31 @@ def test_tag_bayesian_metrics_shrinks_sparse_tags_toward_global_rate():
     assert metrics["estimated_review_rate_credible_range_min"] < 50.0
     assert metrics["estimated_review_rate_credible_range_max"] > 50.0
     assert metrics["probability_review_rate_exceeds_baseline_percentage"] > 80.0
+
+
+def test_format_markdown_report_includes_shareable_report_sections():
+    report = analyze_rows(
+        [
+            {
+                "id": "image|one",
+                "title": "A title\nwith a line break",
+                "mgRiskScore": "20",
+                "mgContentTags": "people_visible",
+                "review_alex": "Y",
+            }
+        ],
+        ["id", "title", "mgRiskScore", "mgContentTags", "review_alex"],
+    )
+
+    markdown = format_markdown_report(report)
+
+    assert "# Human Review Analysis" in markdown
+    assert "## Reviewer Risk Scores" in markdown
+    assert "## Content Tag Review Signals" in markdown
+    assert "## Per-Image Review Decisions" in markdown
+    assert "image\\|one" in markdown
+    assert "A title with a line break" in markdown
+    assert "| people_visible |" in markdown
 
 
 def test_analyze_rows_rejects_missing_required_columns():
