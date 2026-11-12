@@ -7,7 +7,6 @@ Usage:
 import argparse
 import csv
 import json
-import math
 import statistics
 import sys
 from collections.abc import Sequence
@@ -15,14 +14,13 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from scipy.stats import beta as beta_distribution
+
 
 REQUIRED_COLUMNS = {"id", "mgRiskScore", "mgContentTags"}
 REVIEWER_COLUMN_PREFIX = "review"
 TAG_PRIOR_STRENGTH_IMAGES = 5.0
-_BETA_EPSILON = 3e-14
-_BETA_FPMIN = 1e-300
-_BETA_ITERATIONS = 200
-_BETA_BOUND_EPSILON = 1e-12
+_RATE_BOUND_EPSILON = 1e-12
 
 
 def needs_review(value: str | None) -> bool:
@@ -48,87 +46,19 @@ def percentage(numerator: int, denominator: int) -> float:
     return 100 * numerator / denominator if denominator else 0.0
 
 
-def beta_continued_fraction(alpha: float, beta: float, value: float) -> float:
-    """Return the continued fraction used by the regularized beta function."""
-    qab = alpha + beta
-    qap = alpha + 1.0
-    qam = alpha - 1.0
-    c = 1.0
-    d = 1.0 - qab * value / qap
-    d = _BETA_FPMIN if abs(d) < _BETA_FPMIN else d
-    d = 1.0 / d
-    result = d
-
-    for iteration in range(1, _BETA_ITERATIONS + 1):
-        multiplier = iteration * (beta - iteration) * value / ((qam + 2 * iteration) * (alpha + 2 * iteration))
-        d = 1.0 + multiplier * d
-        d = _BETA_FPMIN if abs(d) < _BETA_FPMIN else d
-        c = 1.0 + multiplier / c
-        c = _BETA_FPMIN if abs(c) < _BETA_FPMIN else c
-        d = 1.0 / d
-        result *= d * c
-
-        multiplier = -(alpha + iteration) * (qab + iteration) * value / (
-            (alpha + 2 * iteration) * (qap + 2 * iteration)
-        )
-        d = 1.0 + multiplier * d
-        d = _BETA_FPMIN if abs(d) < _BETA_FPMIN else d
-        c = 1.0 + multiplier / c
-        c = _BETA_FPMIN if abs(c) < _BETA_FPMIN else c
-        d = 1.0 / d
-        delta = d * c
-        result *= delta
-        if abs(delta - 1.0) < _BETA_EPSILON:
-            return result
-
-    raise ValueError("Beta continued fraction did not converge.")
-
-
-def beta_cdf(value: float, alpha: float, beta: float) -> float:
-    """Return the cumulative probability of a beta distribution at value."""
-    if value <= 0.0:
-        return 0.0
-    if value >= 1.0:
-        return 1.0
-
-    log_term = (
-        math.lgamma(alpha + beta)
-        - math.lgamma(alpha)
-        - math.lgamma(beta)
-        + alpha * math.log(value)
-        + beta * math.log1p(-value)
-    )
-    term = math.exp(log_term)
-    if value < (alpha + 1.0) / (alpha + beta + 2.0):
-        return term * beta_continued_fraction(alpha, beta, value) / alpha
-    return 1.0 - term * beta_continued_fraction(beta, alpha, 1.0 - value) / beta
-
-
-def beta_quantile(probability: float, alpha: float, beta: float) -> float:
-    """Return a beta distribution quantile using bisection over its CDF."""
-    lower = 0.0
-    upper = 1.0
-    for _ in range(80):
-        midpoint = (lower + upper) / 2.0
-        if beta_cdf(midpoint, alpha, beta) < probability:
-            lower = midpoint
-        else:
-            upper = midpoint
-    return (lower + upper) / 2.0
-
-
 def tag_bayesian_metrics(
     images_needing_review: int, image_count: int, global_image_review_rate: float
 ) -> dict[str, Any]:
     """Calculate prior-smoothed review metrics for one tag from image-level outcomes."""
-    baseline = min(
-        max(global_image_review_rate, _BETA_BOUND_EPSILON), 1.0 - _BETA_BOUND_EPSILON
-    )
+    baseline = min(max(global_image_review_rate, _RATE_BOUND_EPSILON), 1.0 - _RATE_BOUND_EPSILON)
     prior_alpha = TAG_PRIOR_STRENGTH_IMAGES * baseline
     prior_beta = TAG_PRIOR_STRENGTH_IMAGES * (1.0 - baseline)
     posterior_alpha = prior_alpha + images_needing_review
     posterior_beta = prior_beta + image_count - images_needing_review
 
+    credible_range_min, credible_range_max = beta_distribution.interval(
+        0.95, posterior_alpha, posterior_beta
+    )
     return {
         "images_majority_agree_needs_review_percentage": percentage(
             images_needing_review, image_count
@@ -136,14 +66,10 @@ def tag_bayesian_metrics(
         "baseline_smoothed_review_rate_percentage": round(
             100 * posterior_alpha / (posterior_alpha + posterior_beta), 2
         ),
-        "estimated_review_rate_credible_range_min": round(
-            100 * beta_quantile(0.025, posterior_alpha, posterior_beta), 2
-        ),
-        "estimated_review_rate_credible_range_max": round(
-            100 * beta_quantile(0.975, posterior_alpha, posterior_beta), 2
-        ),
+        "estimated_review_rate_credible_range_min": round(100 * credible_range_min, 2),
+        "estimated_review_rate_credible_range_max": round(100 * credible_range_max, 2),
         "probability_review_rate_exceeds_baseline_percentage": round(
-            100 * (1.0 - beta_cdf(global_image_review_rate, posterior_alpha, posterior_beta)), 2
+            100 * beta_distribution.sf(global_image_review_rate, posterior_alpha, posterior_beta), 2
         ),
     }
 

@@ -12,7 +12,7 @@ venv/bin/python -m pip install --upgrade pip
 venv/bin/python -m pip install -e ".[dev]"
 ```
 
-The analyzer has no runtime dependencies outside the Python standard library. `pytest` is installed only for running tests.
+The analyzer uses SciPy for Bayesian credible ranges and evidence calculations. `pytest` is installed only for running tests.
 
 ## Usage
 
