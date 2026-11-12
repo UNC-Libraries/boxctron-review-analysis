@@ -52,7 +52,7 @@ The JSON report has these sections:
 - `all_reviewers`: the same risk-score summaries with every reviewer decision pooled together.
 - `content_tag_analysis`: global image-level baseline and Bayesian prior strength.
 - `content_tag_definitions`: definitions for the tag metrics in the next section.
-- `content_tags`: reviewer-level and image-level review metrics for each content tag.
+- `content_tags`: reviewer-level and image-level review metrics for each content tag, ordered by estimated review workload.
 
 Tag uncertainty metrics use a five-image-equivalent prior based on the global image-level review rate. Increase `TAG_PRIOR_STRENGTH_IMAGES` to make sparse-tag estimates more conservative, or decrease it to let tag-specific data have more influence sooner.
 

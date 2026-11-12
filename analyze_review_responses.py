@@ -246,10 +246,10 @@ def analyze_rows(rows: list[dict[str, str]], fieldnames: Sequence[str] | None) -
         for reviewer, categories in reviewer_scores.items()
     }
     global_image_review_rate = total_images_needing_review / len(rows) if rows else 0.0
-    content_tags = {}
+    tag_metrics = {}
     for tag, counts in sorted(tag_counts.items()):
         image_counts = tag_image_counts[tag]
-        content_tags[tag] = {
+        tag_metrics[tag] = {
             "total_times_marked_for_review": counts["needs_review"],
             "total_responses": counts["total_responses"],
             "reviewer_marked_for_review_percentage": percentage(
@@ -263,6 +263,17 @@ def analyze_rows(rows: list[dict[str, str]], fieldnames: Sequence[str] | None) -
                 global_image_review_rate,
             ),
         }
+    content_tags = dict(
+        sorted(
+            tag_metrics.items(),
+            key=lambda item: (
+                -item[1]["baseline_smoothed_review_rate_percentage"],
+                -item[1]["estimated_review_rate_credible_range_min"],
+                -item[1]["probability_review_rate_exceeds_baseline_percentage"],
+                item[0],
+            ),
+        )
+    )
 
     return {
         "images": images,

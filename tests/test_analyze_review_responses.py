@@ -130,6 +130,55 @@ def test_format_markdown_report_includes_shareable_report_sections():
     assert "| people_visible |" in markdown
 
 
+def test_content_tags_are_sorted_by_estimated_review_workload():
+    report = analyze_rows(
+        [
+            {
+                "id": "high-one",
+                "mgRiskScore": "10",
+                "mgContentTags": "high",
+                "review_alex": "Y",
+                "review_blair": "Y",
+                "review_casey": "Y",
+            },
+            {
+                "id": "high-two",
+                "mgRiskScore": "20",
+                "mgContentTags": "high",
+                "review_alex": "Y",
+                "review_blair": "Y",
+                "review_casey": "Y",
+            },
+            {
+                "id": "medium",
+                "mgRiskScore": "30",
+                "mgContentTags": "medium",
+                "review_alex": "Y",
+                "review_blair": "Y",
+                "review_casey": "Y",
+            },
+            {
+                "id": "low",
+                "mgRiskScore": "40",
+                "mgContentTags": "low",
+                "review_alex": "N",
+                "review_blair": "N",
+                "review_casey": "N",
+            },
+        ],
+        [
+            "id",
+            "mgRiskScore",
+            "mgContentTags",
+            "review_alex",
+            "review_blair",
+            "review_casey",
+        ],
+    )
+
+    assert list(report["content_tags"]) == ["high", "medium", "low"]
+
+
 def test_analyze_rows_rejects_missing_required_columns():
     with pytest.raises(ValueError, match="missing required columns: mgContentTags"):
         analyze_rows([], ["id", "mgRiskScore", "review_alex"])
