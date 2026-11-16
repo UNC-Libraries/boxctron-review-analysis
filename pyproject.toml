@@ -10,7 +10,7 @@ requires-python = ">=3.10"
 dependencies = ["scipy>=1.14"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["playwright>=1.50", "pytest>=8"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
