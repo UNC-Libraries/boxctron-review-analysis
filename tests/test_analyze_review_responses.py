@@ -484,6 +484,10 @@ def test_explorer_suggestions_and_zero_explanation_keep_threshold_active():
         "No images meet the active risk threshold, and no categories are selected, "
         "so no images are predicted for review."
     )
+    assert (
+        explorer_zero_result_explanation(images, set(), "any", risk_threshold=5.0)
+        is None
+    )
 
 
 def test_all_mode_empty_selection_is_an_initialization_exception():
@@ -577,9 +581,12 @@ def test_html_explorer_threshold_smoke_blocks_dcr_and_can_be_cleared():
     )
     dcr_requests = []
 
-    try:
-        with playwright_sync_api.sync_playwright() as playwright:
+    with playwright_sync_api.sync_playwright() as playwright:
+        try:
             browser = playwright.chromium.launch()
+        except playwright_sync_api.Error as error:
+            pytest.skip(f"Playwright Chromium is unavailable: {error}")
+        try:
             page = browser.new_page()
             page.route(
                 "https://dcr-test.lib.unc.edu/**",
@@ -591,14 +598,14 @@ def test_html_explorer_threshold_smoke_blocks_dcr_and_can_be_cleared():
                 page.locator("tbody tr", has_text="score-only").get_attribute("class")
                 == "true_positive"
             )
+            assert page.locator("#zero-result").is_hidden()
             page.locator("#clear-threshold").click()
             assert (
                 page.locator("tbody tr", has_text="score-only").get_attribute("class")
                 == "false_negative"
             )
+        finally:
             browser.close()
-    except playwright_sync_api.Error as error:
-        pytest.skip(f"Playwright Chromium is unavailable: {error}")
 
     assert dcr_requests
 
@@ -628,9 +635,12 @@ def test_html_explorer_can_select_inclusive_half_truth_criterion():
         ],
     )
 
-    try:
-        with playwright_sync_api.sync_playwright() as playwright:
+    with playwright_sync_api.sync_playwright() as playwright:
+        try:
             browser = playwright.chromium.launch()
+        except playwright_sync_api.Error as error:
+            pytest.skip(f"Playwright Chromium is unavailable: {error}")
+        try:
             page = browser.new_page()
             page.route("https://dcr-test.lib.unc.edu/**", lambda route: route.abort())
             page.set_content(format_html_explorer(report), wait_until="load")
@@ -645,9 +655,8 @@ def test_html_explorer_can_select_inclusive_half_truth_criterion():
                 page.locator("tbody tr", has_text="two-of-four").get_attribute("class")
                 == "true_positive"
             )
+        finally:
             browser.close()
-    except playwright_sync_api.Error as error:
-        pytest.skip(f"Playwright Chromium is unavailable: {error}")
 
 
 def test_dcr_image_urls_encodes_an_id_as_one_path_component():
