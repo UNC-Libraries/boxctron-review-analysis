@@ -9,8 +9,11 @@ description = "Analyze human review decisions for boxctron-describes image outpu
 requires-python = ">=3.10"
 dependencies = ["scipy>=1.14"]
 
+[tool.setuptools]
+py-modules = ["analyze_review_responses", "html_explorer"]
+
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["playwright>=1.50", "pytest>=8"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
