@@ -558,6 +558,79 @@ def test_html_explorer_uses_safe_base64_payload_and_renders_expected_controls():
     assert "Thumbnail unavailable" in html
     assert "link.target='_blank'" in html
     assert "link.rel='noopener noreferrer'" in html
+    assert "image.loading='lazy'" in html
+
+
+def test_html_explorer_sorts_votes_by_normalized_rate_with_id_tiebreaker():
+    playwright_sync_api = pytest.importorskip("playwright.sync_api")
+    report = {
+        "images": [
+            {
+                "id": "one-of-ten",
+                "title": "",
+                "content_tags": [],
+                "risk_score": 0,
+                "needs_review_count": 1,
+                "reviewer_count": 10,
+            },
+            {
+                "id": "two-of-two",
+                "title": "",
+                "content_tags": [],
+                "risk_score": 0,
+                "needs_review_count": 2,
+                "reviewer_count": 2,
+            },
+            {
+                "id": "alpha-half",
+                "title": "",
+                "content_tags": [],
+                "risk_score": 0,
+                "needs_review_count": 1,
+                "reviewer_count": 2,
+            },
+            {
+                "id": "beta-half",
+                "title": "",
+                "content_tags": [],
+                "risk_score": 0,
+                "needs_review_count": 2,
+                "reviewer_count": 4,
+            },
+        ],
+        "content_tags": [],
+    }
+
+    with playwright_sync_api.sync_playwright() as playwright:
+        try:
+            browser = playwright.chromium.launch()
+        except playwright_sync_api.Error as error:
+            pytest.skip(f"Playwright Chromium is unavailable: {error}")
+        try:
+            page = browser.new_page()
+            page.route("https://dcr-test.lib.unc.edu/**", lambda route: route.abort())
+            page.set_content(format_html_explorer(report), wait_until="load")
+            assert page.locator("img.thumbnail").evaluate_all(
+                "(images) => images.every((image) => image.loading === 'lazy')"
+            )
+
+            page.locator('[data-sort="votes"]').click()
+            assert page.locator("tbody tr td:nth-child(2)").all_text_contents() == [
+                "one-of-ten",
+                "alpha-half",
+                "beta-half",
+                "two-of-two",
+            ]
+
+            page.locator('[data-sort="votes"]').click()
+            assert page.locator("tbody tr td:nth-child(2)").all_text_contents() == [
+                "two-of-two",
+                "beta-half",
+                "alpha-half",
+                "one-of-ten",
+            ]
+        finally:
+            browser.close()
 
 
 def test_html_explorer_threshold_smoke_blocks_dcr_and_can_be_cleared():
@@ -704,3 +777,25 @@ def test_cli_renders_html_format(tmp_path):
 
     assert result.stdout.startswith("<!doctype html>")
     assert "Human Review Tag Explorer" in result.stdout
+
+
+@pytest.mark.parametrize("format_args", [[], ["--format", "json"]])
+def test_cli_renders_json_by_default_and_when_explicit(tmp_path, format_args):
+    csv_file = tmp_path / "reviews.csv"
+    csv_file.write_text(
+        "id,mgRiskScore,mgContentTags,review_a\nimage,1,tag,Y\n", encoding="utf-8"
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "analyze_review_responses.py",
+            str(csv_file),
+            *format_args,
+        ],
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+
+    assert result.stdout.startswith("{")
